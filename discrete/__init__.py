@@ -1,1 +1,2 @@
-from ..src import *
+from src.generate_lines import *
+from discrete.nodes import *
