@@ -170,6 +170,10 @@ class Graph:
             verts = self.regions[region_index][:-1]
 
             n = len(verts)
+            min_dist = float("inf")
+            min_vert1 = None
+            min_vert2 = None
+            min_intersection = None
             for i in range(n):
                 # The edge to check uses the current and next vertices
                 vert1 = verts[i % n]
@@ -183,14 +187,16 @@ class Graph:
                     dist = self.dist_between_points(p, intersection)
                     # If the distance is 0 it must be checking the edge it's on, so ignore it
                     # If the distance is greater than 0, it has found the edge so break
-                    if dist > 0:
-                        break
+                    if dist > 0 and dist < min_dist:
+                        min_vert1 = vert1
+                        min_vert2 = vert2
+                        min_intersection = intersection
 
         # Get the coordinates of the intersection
         # Calculate the normal of the edge of intersection
         # Calculate the angle between the incident ray and the edge
         # Get the cost of the new region
-        edge_vector = (vert2[0] - vert1[0], vert2[1] - vert1[1])
+        edge_vector = (min_vert2[0] - min_vert1[0], min_vert2[1] - min_vert1[1])
         n1, n2 = self.calculate_normal(edge_vector)
 
         if np.dot(v, n1) > 0:
@@ -209,12 +215,12 @@ class Graph:
         if det < 0:
             theta = -1 * theta
 
-        new_region = self.get_current_region(intersection, v)
+        new_region = self.get_current_region(min_intersection, v)
         if new_region == None:
-            return intersection, theta, normal, 1
+            return min_intersection, theta, normal, 1
         else:
             new_region_weight = self.regions[new_region][-1]
-            return intersection, theta, normal, new_region_weight
+            return min_intersection, theta, normal, new_region_weight
 
 
 if __name__ == "__main__":
@@ -226,9 +232,7 @@ if __name__ == "__main__":
     my_target = (1, -1)
     graph = Graph(my_regions, my_target)
 
-    intersection, theta, normal, new_weight = graph.get_next((0, 0), (0.997, -0.07))
+    intersection, theta, normal, new_weight = graph.get_next((0.6, -0.6), (0.1, -1))
     print(
         f"Intersection: {intersection}\nAngle: {theta}\nNormal: {normal}\nNew Weight: {new_weight}"
     )
-
-    print(graph.get_regions())
