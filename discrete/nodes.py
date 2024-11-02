@@ -1,130 +1,162 @@
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import matplotlib.pyplot as plt
 
 
-class generateNodes:
-    def __init__(self, polygons: List[Tuple[float, float]]):
-        self.polygons = polygons
-
-
-    def is_point_in_polygon(point: Tuple[float, float], polygon: List[Tuple[float, float]]) -> bool:
+class GenerateNodes:
+    def __init__(self, polygons: Dict[int, List[Tuple[float, float]]]):
         """
-        Ray casting algorithm to determine if a point is inside a polygon
-        """
-        x, y = point
-        inside = False
-        
-        j = len(polygon) - 1
-        for i in range(len(polygon)):
-            if ((polygon[i][1] > y) != (polygon[j][1] > y) and
-                x < (polygon[j][0] - polygon[i][0]) * (y - polygon[i][1]) /
-                    (polygon[j][1] - polygon[i][1]) + polygon[i][0]):
-                inside = not inside
-            j = i
-        
-        return inside
-
-    def distance_to_nearest_vertex(point: Tuple[float, float], vertices: List[Tuple[float, float]]) -> float:
-        """
-        Calculate the minimum distance from a point to any vertex
-        """
-        return min(np.sqrt((point[0] - v[0])**2 + (point[1] - v[1])**2) for v in vertices)
-
-
-    def get_polygon_bounds(polygon: List[Tuple[float, float]]) -> Tuple[float, float, float, float]:
-        """
-        Get the bounding box of the polygon
-        """
-        xs, ys = zip(*polygon)
-        return min(xs), max(xs), min(ys), max(ys)
-
-
-    def calculate_polygon_area(polygon: List[Tuple[float, float]]) -> float:
-        """
-        Calculate the area of the polygon
-        """
-        n = len(polygon)
-        area = 0.0
-        for i in range(n):
-            j = (i + 1) % n
-            area += polygon[i][0] * polygon[j][1]
-            area -= polygon[j][0] * polygon[i][1]
-        return abs(area) / 2.0
-
-
-    def generate_region_points(self, base_density: float = 0.1,
-                               vertex_density_factor: float = 5.0,
-                               vertex_influence_radius: float = None) -> List[Tuple[float, float]]:
-        """
-        Generate points within a polygon with higher density near vertices.
+        Initialize the node generator.
         
         Args:
-            polygon: List of (x, y) tuples defining the polygon vertices
-            base_density: Base density of points (points per unit area)
-            vertex_density_factor: How much denser the points should be near vertices
-            vertex_influence_radius: Radius of increased density around vertices (auto-calculated if None)
-        
-        Returns:
-            List of (x, y) points within the polygon
+            polygons: Dictionary mapping polygon index to list of vertices and cost
+                     Format: {polygon_id: ([vertices], cost)}
         """
-        # Calculate bounding box
-        min_x, max_x, min_y, max_y = get_polygon_bounds(polygon)
-        
-        # Calculate area and auto-determine vertex influence radius if not specified
-        area = calculate_polygon_area(polygon)
-        if vertex_influence_radius is None:
-            vertex_influence_radius = np.sqrt(area) * 0.15  # 15% of square root of area
-        
-        # Calculate number of points based on area and density
-        target_points = int(area * base_density)
-        
-        # Generate more points than needed (we'll filter some out)
-        points = []
-        attempts = 0
-        max_attempts = target_points * 10
-        
-        while len(points) < target_points and attempts < max_attempts:
-            # Generate random point within bounding box
-            x = np.random.uniform(min_x, max_x)
-            y = np.random.uniform(min_y, max_y)
-            point = (x, y)
-            
-            # Check if point is in polygon
-            if not is_point_in_polygon(point, polygon):
-                attempts += 1
-                continue
-                
-            # Calculate distance to nearest vertex
-            dist = distance_to_nearest_vertex(point, polygon)
-            
-            # Probability of keeping the point increases near vertices
-            prob = 1.0
-            if dist < vertex_influence_radius:
-                # Smoothly increase probability near vertices
-                prob = 1.0 + (vertex_density_factor - 1.0) * (1.0 - dist/vertex_influence_radius)**2
-            
-            if np.random.random() < prob:
-                points.append(point)
-                
-            attempts += 1
-        
-        return points
+        self.polygons = polygons
+        self.vertex_cost = {}
+        self.generate_vertex_cost()
+        self.nodes = set()
 
+    def generate_vertex_cost(self):
+        """
+        Generate vertex ownership based on minimum cost polygons
+        """
+        for poly_id, (vertices, cost) in self.polygons.items():
+            for vertex in vertices:
+                if vertex not in self.vertex_cost:
+                    self.vertex_cost[vertex] = (cost, poly_id)
+                else:
+                    if cost < self.vertex_cost[vertex][0]:
+                        self.vertex_cost[vertex] = (cost, poly_id)
 
-    def visualize_points(polygon: List[Tuple[float, float]], points: List[Tuple[float, float]]):
+    def generate_offset_point(self, point: Tuple[float, float], 
+                            polygon: List[Tuple[float, float]], 
+                            offset: float = 1e-3) -> Tuple[float, float]:
         """
-        Visualize the polygon and generated points using matplotlib
+        Generate a point slightly inside the polygon from a vertex
         """
+        # Find adjacent vertices
+        idx = polygon.index(point)
+        prev_idx = (idx - 1) % len(polygon)
+        next_idx = (idx + 1) % len(polygon)
         
-        # Plot polygon
-        polygon_plus_first = polygon + [polygon[0]]  # Close the polygon
-        xs, ys = zip(*polygon_plus_first)
-        plt.plot(xs, ys, 'b-', label='Polygon')
+        # Get vectors to adjacent vertices
+        v1 = np.array(polygon[prev_idx]) - np.array(point)
+        v2 = np.array(polygon[next_idx]) - np.array(point)
         
-        # Plot points
-        point_xs, point_ys = zip(*points)
-        plt.scatter(point_xs, point_ys, c='r', s=10, alpha=0.5, label='Generated Points')
+        # Normalize vectors
+        v1 = v1 / np.linalg.norm(v1)
+        v2 = v2 / np.linalg.norm(v2)
+        
+        # Get bisector vector (pointing inside polygon)
+        bisector = -(v1 + v2)
+        bisector = bisector / np.linalg.norm(bisector)
+        
+        # Generate new point offset along bisector
+        new_point = np.array(point) + offset * bisector
+        return tuple(new_point)
+
+    def generate_edge_points(self, polygon: List[Tuple[float, float]], 
+                           num_points: int = 3) -> List[Tuple[float, float]]:
+        """
+        Generate points along the edges of the polygon
+        """
+        edge_points = []
+        for i in range(len(polygon)):
+            p1 = np.array(polygon[i])
+            p2 = np.array(polygon[(i + 1) % len(polygon)])
+            
+            # Generate points along edge
+            for j in range(1, num_points + 1):
+                t = j / (num_points + 1)
+                point = p1 * (1 - t) + p2 * t
+                
+                # Offset point slightly inside polygon
+                edge_vector = p2 - p1
+                normal_vector = np.array([-edge_vector[1], edge_vector[0]])
+                normal_vector = normal_vector / np.linalg.norm(normal_vector)
+                
+                # Check if normal points inside polygon using cross product
+                center = np.mean(polygon, axis=0)
+                to_center = center - point
+                if np.cross(edge_vector, to_center) < 0:
+                    normal_vector = -normal_vector
+                    
+                offset_point = point + normal_vector * 1e-3
+                edge_points.append(tuple(offset_point))
+                
+        return edge_points
+
+    def generate_interior_points(self, polygon: List[Tuple[float, float]], 
+                               num_points: int = 5) -> List[Tuple[float, float]]:
+        """
+        Generate sparse points in the interior of the polygon
+        """
+        # Calculate centroid
+        centroid = np.mean(polygon, axis=0)
+        
+        # Generate random points in polygon interior
+        interior_points = []
+        for _ in range(num_points):
+            # Generate random point between centroid and random edge point
+            edge_point = polygon[np.random.randint(len(polygon))]
+            t = np.random.uniform(0.2, 0.8)  # Bias towards edges
+            point = tuple(centroid * (1 - t) + np.array(edge_point) * t)
+            interior_points.append(point)
+            
+        return interior_points
+
+    def generate_all_points(self) -> Dict[int, List[Tuple[float, float]]]:
+        """
+        Generate all points for all polygons
+        """
+        polygon_points = {}
+        
+        # Process polygons in order of increasing cost
+        sorted_polygons = sorted(self.polygons.items(), key=lambda x: x[1][1])
+        
+        for poly_id, (vertices, cost) in sorted_polygons:
+            points = []
+            
+            # Generate vertex-based points
+            for vertex in vertices:
+                if self.vertex_cost[vertex][1] == poly_id:  # Only if we own this vertex
+                    offset_point = self.generate_offset_point(vertex, vertices)
+                    points.append(offset_point)
+            
+            # Generate edge points
+            edge_points = self.generate_edge_points(vertices)
+            points.extend(edge_points)
+            
+            # Generate interior points
+            interior_points = self.generate_interior_points(vertices)
+            points.extend(interior_points)
+            
+            polygon_points[poly_id] = points
+            
+        return polygon_points
+
+    def visualize_points(self):
+        """
+        Visualize all polygons and their generated points
+        """
+        plt.figure(figsize=(10, 10))
+        
+        # Plot each polygon and its points
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.polygons)))
+        
+        polygon_points = self.generate_all_points()
+        
+        for (poly_id, (vertices, cost)), color in zip(self.polygons.items(), colors):
+            # Plot polygon
+            vertices_plot = vertices + [vertices[0]]  # Close the polygon
+            xs, ys = zip(*vertices_plot)
+            plt.plot(xs, ys, '-', color=color, alpha=0.5, label=f'Polygon {poly_id} (cost={cost})')
+            
+            # Plot points
+            if poly_id in polygon_points:
+                xs, ys = zip(*polygon_points[poly_id])
+                plt.scatter(xs, ys, color=color, s=30)
         
         plt.axis('equal')
         plt.legend()
