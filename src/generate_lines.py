@@ -188,6 +188,7 @@ class Graph:
                     # If the distance is 0 it must be checking the edge it's on, so ignore it
                     # If the distance is greater than 0, it has found the edge so break
                     if dist > 0 and dist < min_dist:
+                        min_dist = dist
                         min_vert1 = vert1
                         min_vert2 = vert2
                         min_intersection = intersection
@@ -232,7 +233,7 @@ if __name__ == "__main__":
     my_target = (1, -1)
     graph = Graph(my_regions, my_target)
 
-    intersection, theta, normal, new_weight = graph.get_next((0.6, -0.6), (0.1, -1))
+    intersection, theta, normal, new_weight = graph.get_next((0, 0), (1, -0.1))
     print(
         f"Intersection: {intersection}\nAngle: {theta}\nNormal: {normal}\nNew Weight: {new_weight}"
     )
