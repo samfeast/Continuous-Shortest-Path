@@ -1,164 +1,275 @@
 import numpy as np
 from typing import List, Tuple, Dict
 import matplotlib.pyplot as plt
+import random
+
+
+def main():
+    generator = GenerateNodes(regions)
+    points = generator.generate_all_points()
+    generator.visualize_points()
+    print(points)
 
 
 class GenerateNodes:
-    def __init__(self, polygons: Dict[int, List[Tuple[float, float]]]):
+    def __init__(self, regions: Dict[int, Tuple[List[Tuple[Tuple[float, float], Tuple[float, float]]], float]]):
         """
         Initialize the node generator.
         
         Args:
-            polygons: Dictionary mapping polygon index to list of vertices and cost
-                     Format: {polygon_id: ([vertices], cost)}
+            regions: Dictionary mapping region index to (list of line segments, cost)
+                    Format: {region_id: ([(start_point, end_point), ...], cost)}
+                    Each line segment is defined by two points (x,y)
         """
-        self.polygons = polygons
+        self.regions = regions
         self.vertex_cost = {}
+        self.nodes = {}
+        self.space_bounds = self._calculate_space_bounds()
+        self.vertices = self._extract_vertices()
         self.generate_vertex_cost()
-        self.nodes = set()
+
+    def _calculate_space_bounds(self) -> Tuple[float, float]:
+        """
+        Calculate the maximum x and y coordinates from all line segments
+        """
+        max_x = 0
+        max_y = 0
+        
+        for lines, _ in self.regions.values():
+            for (start_x, start_y), (end_x, end_y) in lines:
+                max_x = max(max_x, start_x, end_x)
+                max_y = max(max_y, start_y, end_y)
+        
+        return (max_x, max_y)
+
+    def _extract_vertices(self) -> Dict[int, List[Tuple[float, float]]]:
+        """
+        Extract unique vertices for each region from its line segments
+        """
+        region_vertices = {}
+        
+        for region_id, (lines, _) in self.regions.items():
+            vertices = set()
+            for (start_point, end_point) in lines:
+                vertices.add(start_point)
+                vertices.add(end_point)
+            region_vertices[region_id] = list(vertices)
+            
+        return region_vertices
 
     def generate_vertex_cost(self):
         """
-        Generate vertex ownership based on minimum cost polygons
+        Generate vertex ownership based on minimum cost regions
+        Vertices are shared between regions where line segments meet
         """
-        for poly_id, (vertices, cost) in self.polygons.items():
-            for vertex in vertices:
+        for region_id, (_, cost) in self.regions.items():
+            for vertex in self.vertices[region_id]:
                 if vertex not in self.vertex_cost:
-                    self.vertex_cost[vertex] = (cost, poly_id)
+                    self.vertex_cost[vertex] = (cost, region_id)
                 else:
                     if cost < self.vertex_cost[vertex][0]:
-                        self.vertex_cost[vertex] = (cost, poly_id)
+                        self.vertex_cost[vertex] = (cost, region_id)
 
-    def generate_offset_point(self, point: Tuple[float, float], 
-                            polygon: List[Tuple[float, float]], 
+    def is_point_valid(self, point: Tuple[float, float]) -> bool:
+        """
+        Check if a point is within the valid space bounds
+        """
+        x, y = point
+        return (x >= 0 and y >= 0 and 
+                x <= self.space_bounds[0] and 
+                y <= self.space_bounds[1])
+
+    def generate_offset_point(self, 
+                            vertex: Tuple[float, float], 
+                            lines: List[Tuple[Tuple[float, float], Tuple[float, float]]], 
                             offset: float = 1e-3) -> Tuple[float, float]:
         """
-        Generate a point slightly inside the polygon from a vertex
+        Generate a point slightly inside the region from a vertex
         """
-        # Find adjacent vertices
-        idx = polygon.index(point)
-        prev_idx = (idx - 1) % len(polygon)
-        next_idx = (idx + 1) % len(polygon)
         
-        # Get vectors to adjacent vertices
-        v1 = np.array(polygon[prev_idx]) - np.array(point)
-        v2 = np.array(polygon[next_idx]) - np.array(point)
+        # Calculate vectors along connected lines
+        vectors = []
+        for start, end in lines:
+            if start == vertex:
+                vec = np.array(end) - np.array(vertex)
+            else:
+                vec = np.array(start) - np.array(vertex)
+            vectors.append(vec / np.linalg.norm(vec))
         
-        # Normalize vectors
-        v1 = v1 / np.linalg.norm(v1)
-        v2 = v2 / np.linalg.norm(v2)
-        
-        # Get bisector vector (pointing inside polygon)
-        bisector = -(v1 + v2)
-        bisector = bisector / np.linalg.norm(bisector)
-        
-        # Generate new point offset along bisector
-        new_point = np.array(point) + offset * bisector
-        return tuple(new_point)
-
-    def generate_edge_points(self, polygon: List[Tuple[float, float]], 
-                           num_points: int = 3) -> List[Tuple[float, float]]:
-        """
-        Generate points along the edges of the polygon
-        """
-        edge_points = []
-        for i in range(len(polygon)):
-            p1 = np.array(polygon[i])
-            p2 = np.array(polygon[(i + 1) % len(polygon)])
+        # Calculate bisector (pointing inside)
+        bisector = -(vectors[0] + vectors[1])
+        if np.linalg.norm(bisector) > 0:
+            bisector = bisector / np.linalg.norm(bisector)
             
-            # Generate points along edge
-            for j in range(1, num_points + 1):
-                t = j / (num_points + 1)
-                point = p1 * (1 - t) + p2 * t
-                
-                # Offset point slightly inside polygon
-                edge_vector = p2 - p1
-                normal_vector = np.array([-edge_vector[1], edge_vector[0]])
-                normal_vector = normal_vector / np.linalg.norm(normal_vector)
-                
-                # Check if normal points inside polygon using cross product
-                center = np.mean(polygon, axis=0)
-                to_center = center - point
-                if np.cross(edge_vector, to_center) < 0:
-                    normal_vector = -normal_vector
-                    
-                offset_point = point + normal_vector * 1e-3
-                edge_points.append(tuple(offset_point))
-                
-        return edge_points
-
-    def generate_interior_points(self, polygon: List[Tuple[float, float]], 
-                               num_points: int = 5) -> List[Tuple[float, float]]:
-        """
-        Generate sparse points in the interior of the polygon
-        """
-        # Calculate centroid
-        centroid = np.mean(polygon, axis=0)
-        
-        # Generate random points in polygon interior
-        interior_points = []
-        for _ in range(num_points):
-            # Generate random point between centroid and random edge point
-            edge_point = polygon[np.random.randint(len(polygon))]
-            t = np.random.uniform(0.2, 0.8)  # Bias towards edges
-            point = tuple(centroid * (1 - t) + np.array(edge_point) * t)
-            interior_points.append(point)
+            # Generate new point
+            new_point = tuple(np.array(vertex) + offset * bisector)
             
-        return interior_points
+            # Check if point is within bounds
+            if self.is_point_valid(new_point):
+                return new_point
+        
+        return None
+
+    def generate_vertex_points(self, vertex: Tuple[float, float], 
+                             lines: List[Tuple[Tuple[float, float], Tuple[float, float]]], 
+                             prob: float = 0.5) -> List[Tuple[float, float]]:
+        """
+        Generate points at vertices with 50% probability
+        """
+        if random.random() < prob:
+            print("Generating node for:", vertex)
+            offset_point = self.generate_offset_point(vertex, lines)
+            return [offset_point] if offset_point else []
+        else:
+            print(vertex)
+        return []
+
+    def generate_line_points(self, 
+                           start: Tuple[float, float], 
+                           end: Tuple[float, float], 
+                           num_points: int = 3,
+                           prob: float = 0.1,
+                           offset: float = 1e-3) -> List[Tuple[float, float]]:
+        """
+        Generate points along a line segment with low probability
+        """
+        points = []
+        start_array = np.array(start)
+        end_array = np.array(end)
+        
+        line_vector = end_array - start_array
+        line_length = np.linalg.norm(line_vector)
+        if line_length == 0:
+            return points
+            
+        line_vector = line_vector / line_length
+        normal_vector = np.array([-line_vector[1], line_vector[0]])
+        
+        for i in range(1, num_points + 1):
+            if random.random() < prob:  # Only generate point with 10% probability
+                t = i / (num_points + 1)
+                base_point = start_array * (1 - t) + end_array * t
+                offset_point = tuple(base_point + normal_vector * offset)
+                
+                if self.is_point_valid(offset_point):
+                    points.append(offset_point)
+                
+        return points
 
     def generate_all_points(self) -> Dict[int, List[Tuple[float, float]]]:
         """
-        Generate all points for all polygons
+        Generate all points for all regions, ensuring shared edges use lower cost
         """
-        polygon_points = {}
+        edge_ownership = {}
         
-        # Process polygons in order of increasing cost
-        sorted_polygons = sorted(self.polygons.items(), key=lambda x: x[1][1])
+        # First, determine edge ownership
+        for region_id, (lines, cost) in self.regions.items():
+            for line in lines:
+                sorted_line = tuple(sorted([line[0], line[1]]))
+                if sorted_line not in edge_ownership:
+                    edge_ownership[sorted_line] = (cost, region_id)
+                else:
+                    if cost < edge_ownership[sorted_line][0]:
+                        edge_ownership[sorted_line] = (cost, region_id)
         
-        for poly_id, (vertices, cost) in sorted_polygons:
+        node_id = 0
+        # Generate points for each region
+        for region_id, (lines, cost) in self.regions.items():
             points = []
             
-            # Generate vertex-based points
-            for vertex in vertices:
-                if self.vertex_cost[vertex][1] == poly_id:  # Only if we own this vertex
-                    offset_point = self.generate_offset_point(vertex, vertices)
-                    points.append(offset_point)
+            for vertex in self.vertices[region_id]:
+                if self.vertex_cost[vertex][1] == region_id:
+                    vertex_points = self.generate_vertex_points(vertex, lines)
+                    points.extend(vertex_points)
             
             # Generate edge points
-            edge_points = self.generate_edge_points(vertices)
-            points.extend(edge_points)
+            for line in lines:
+                sorted_line = tuple(sorted([line[0], line[1]]))
+                if edge_ownership[sorted_line][1] == region_id:  # Only if we own this edge
+                    line_points = self.generate_line_points(line[0], line[1])
+                    points.extend(line_points)
             
-            # Generate interior points
-            interior_points = self.generate_interior_points(vertices)
-            points.extend(interior_points)
-            
-            polygon_points[poly_id] = points
-            
-        return polygon_points
+            for point in points:
+                self.nodes[node_id] = (point, cost)
+                node_id += 1
+
+        return self.nodes
 
     def visualize_points(self):
         """
-        Visualize all polygons and their generated points
+        Visualize regions and vertices with cost-based colors
         """
-        plt.figure(figsize=(10, 10))
+        plt.figure(figsize=(12, 12))
         
-        # Plot each polygon and its points
-        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.polygons)))
+        # Plot bounds
+        plt.plot([0, self.space_bounds[0]], [0, 0], 'k--', alpha=0.3)
+        plt.plot([0, 0], [0, self.space_bounds[1]], 'k--', alpha=0.3)
+        plt.plot([self.space_bounds[0], self.space_bounds[0]], 
+                [0, self.space_bounds[1]], 'k--', alpha=0.3)
+        plt.plot([0, self.space_bounds[0]], 
+                [self.space_bounds[1], self.space_bounds[1]], 'k--', alpha=0.3)
         
-        polygon_points = self.generate_all_points()
+        # Get unique costs and create color mapping
+        costs = [cost for _, (_, cost) in self.regions.items()]
+        unique_costs = sorted(set(costs))
+        cost_to_color = {cost: plt.cm.viridis(i/max(1, len(unique_costs)-1)) 
+                        for i, cost in enumerate(unique_costs)}
         
-        for (poly_id, (vertices, cost)), color in zip(self.polygons.items(), colors):
-            # Plot polygon
-            vertices_plot = vertices + [vertices[0]]  # Close the polygon
-            xs, ys = zip(*vertices_plot)
-            plt.plot(xs, ys, '-', color=color, alpha=0.5, label=f'Polygon {poly_id} (cost={cost})')
-            
-            # Plot points
-            if poly_id in polygon_points:
-                xs, ys = zip(*polygon_points[poly_id])
-                plt.scatter(xs, ys, color=color, s=30)
+        # Plot region boundaries
+        for region_id, (lines, cost) in self.regions.items():
+            color = cost_to_color[cost]
+            for start, end in lines:
+                plt.plot([start[0], end[0]], [start[1], end[1]], 
+                        '-', color=color, alpha=0.8, linewidth=1,
+                        label=f'Cost = {cost}')
+        
+        # Plot vertices (only at line intersections)
+        for vertex, cost in self.nodes.values():
+            color = cost_to_color[cost]
+            plt.plot(vertex[0], vertex[1], 'o', color=color, markersize=4, 
+                    markeredgecolor='black', markeredgewidth=0.5)
+        
+        # Remove duplicate legend entries
+        handles, labels = plt.gca().get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        plt.legend(by_label.values(), by_label.keys())
         
         plt.axis('equal')
-        plt.legend()
         plt.grid(True)
+        plt.xlim(-0.1, self.space_bounds[0] * 1.1)
+        plt.ylim(-0.1, self.space_bounds[1] * 1.1)
         plt.show()
+
+# Example regions with line segments
+regions = {
+    0: ([((0, 0), (1, 0)), ((1, 0), (1, 1)), ((1, 1), (0, 1)), ((0, 1), (0, 0))], 5),
+    1: ([((0, 1), (1, 1)), ((1, 1), (1, 2)), ((1, 2), (0, 2)), ((0, 2), (0, 1))], 3),
+    2: ([((0, 2), (1, 2)), ((1, 2), (1, 3)), ((1, 3), (0, 3)), ((0, 3), (0, 2))], 5),
+    3: ([((0, 3), (1, 3)), ((1, 3), (1, 4)), ((1, 4), (0, 4)), ((0, 4), (0, 3))], 3),
+    4: ([((0, 4), (1, 4)), ((1, 4), (1, 5)), ((1, 5), (0, 5)), ((0, 5), (0, 4))], 3),
+    5: ([((1, 0), (2, 0)), ((2, 0), (2, 1)), ((2, 1), (1, 1)), ((1, 1), (1, 0))], 3),
+    6: ([((1, 1), (2, 1)), ((2, 1), (2, 2)), ((2, 2), (1, 2)), ((1, 2), (1, 1))], 5),
+    7: ([((1, 2), (2, 2)), ((2, 2), (2, 3)), ((2, 3), (1, 3)), ((1, 3), (1, 2))], 1),
+    8: ([((1, 3), (2, 3)), ((2, 3), (2, 4)), ((2, 4), (1, 4)), ((1, 4), (1, 3))], 5),
+    9: ([((1, 4), (2, 4)), ((2, 4), (2, 5)), ((2, 5), (1, 5)), ((1, 5), (1, 4))], 5),
+    10: ([((2, 0), (3, 0)), ((3, 0), (3, 1)), ((3, 1), (2, 1)), ((2, 1), (2, 0))], 5),
+    11: ([((2, 1), (3, 1)), ((3, 1), (3, 2)), ((3, 2), (2, 2)), ((2, 2), (2, 1))], 3),
+    12: ([((2, 2), (3, 2)), ((3, 2), (3, 3)), ((3, 3), (2, 3)), ((2, 3), (2, 2))], 4),
+    13: ([((2, 3), (3, 3)), ((3, 3), (3, 4)), ((3, 4), (2, 4)), ((2, 4), (2, 3))], 1),
+    14: ([((2, 4), (3, 4)), ((3, 4), (3, 5)), ((3, 5), (2, 5)), ((2, 4), (2, 5))], 4),
+    15: ([((3, 0), (4, 0)), ((4, 0), (4, 1)), ((4, 1), (3, 1)), ((3, 1), (3, 0))], 5),
+    16: ([((3, 1), (4, 1)), ((4, 1), (4, 2)), ((4, 2), (3, 2)), ((3, 2), (3, 1))], 4),
+    17: ([((3, 2), (4, 2)), ((4, 2), (4, 3)), ((4, 3), (3, 3)), ((3, 2), (3, 3))], 2),
+    18: ([((3, 3), (4, 3)), ((4, 3), (4, 4)), ((4, 4), (3, 4)), ((3, 3), (3, 4))], 4),
+    19: ([((3, 4), (4, 4)), ((4, 4), (4, 5)), ((4, 5), (3, 5)), ((3, 4), (3, 5))], 5),
+    20: ([((4, 0), (5, 0)), ((5, 0), (5, 1)), ((5, 1), (4, 1)), ((4, 1), (4, 0))], 4),
+    21: ([((4, 1), (5, 1)), ((5, 1), (5, 2)), ((5, 2), (4, 2)), ((4, 1), (4, 2))], 4),
+    22: ([((4, 2), (5, 2)), ((5, 2), (5, 3)), ((5, 3), (4, 3)), ((4, 2), (4, 3))], 3),
+    23: ([((4, 3), (5, 3)), ((5, 3), (5, 4)), ((5, 4), (4, 4)), ((4, 3), (4, 4))], 3),
+    24: ([((4, 4), (5, 4)), ((5, 4), (5, 5)), ((5, 5), (4, 5)), ((4, 4), (4, 5))], 3)
+}
+
+
+
+if __name__ == "__main__":
+    main()
