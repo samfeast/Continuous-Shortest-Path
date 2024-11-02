@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-regions = [[(0, 0), (1, 0), (0, 1), 4], [(1, 0), (0, 1), (1, 1), 3]]
+# regions = [[(0, 0), (1, 0), (0, 1), 4], [(1, 0), (0, 1), (1, 1), 3]]
 EPSILON = (0.00001, 0.00001)
 
 
@@ -16,9 +16,9 @@ class Graph:
     def add_bounding_regions(self, target):
         x, y = target
 
-        bbox_1 = [(-1, -1), (x + 1, -1), (x + 1, 0), (-1, 0), -1]
+        bbox_1 = [(-1, 1), (x + 1, 1), (x + 1, 0), (-1, 0), -1]
         bbox_2 = [(-1, 0), (0, 0), (0, y), (-1, y), -1]
-        bbox_3 = [(-1, y), (x + 1, y), (x + 1, y + 1), (-1, y + 1), -1]
+        bbox_3 = [(-1, y), (x + 1, y), (x + 1, y - 1), (-1, y - 1), -1]
         bbox_4 = [(x, 0), (x + 1, 0), (x + 1, y), (x, y), -1]
 
         self.regions.append(bbox_1)
@@ -40,7 +40,7 @@ class Graph:
         point = (point[0] + vector[0] * EPSILON[0], point[1] + vector[1] * EPSILON[1])
         i = 0
         # Check all the regions, return when the point is in one
-        for region in regions:
+        for region in self.regions:
             if self.is_in_region(point, region):
                 return i
             i += 1
@@ -167,7 +167,7 @@ class Graph:
             # Find the first time the edge of that region is reached
 
             # Remove the weight from the end of the region
-            verts = regions[region_index][:-1]
+            verts = self.regions[region_index][:-1]
 
             n = len(verts)
             for i in range(n):
@@ -213,19 +213,20 @@ class Graph:
         if new_region == None:
             return intersection, theta, normal, 1
         else:
-            new_region_weight = regions[new_region][-1]
+            new_region_weight = self.regions[new_region][-1]
             return intersection, theta, normal, new_region_weight
 
 
 if __name__ == "__main__":
 
-    my_regions = [[(0, 0), (1, 0), (0, 1), 4], [(1, 0), (0, 1), (1, 1), 3]]
-    my_target = (1, 1)
+    my_regions = [
+        [(0, 0), (0.5, 0), (0.5, -1), (0, -1), 2],
+        [(0.5, 0), (1, 0), (1, -1), (0.5, -1), 3],
+    ]
+    my_target = (1, -1)
     graph = Graph(my_regions, my_target)
 
-    intersection, theta, normal, new_weight = graph.get_next(
-        (0, 0), (math.sqrt(2) / 2, math.sqrt(2) / 2)
-    )
+    intersection, theta, normal, new_weight = graph.get_next((0, 0), (0.997, -0.07))
     print(
         f"Intersection: {intersection}\nAngle: {theta}\nNormal: {normal}\nNew Weight: {new_weight}"
     )
