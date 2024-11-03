@@ -271,7 +271,10 @@ class Graph:
         x, y = np.linalg.solve(coeff_matrix, const_matrix)
 
         # Check that the intersection is on the correct side of the ray
-        if self.lies_in_interval(vert1, vert2, (x, y)):
+        print(vert1, vert2, x, y)
+        if (x - x1) / v[0] >= 0:
+            # if self.lies_in_interval(vert1, vert2, (round(x, 4), round(y, 4))):
+            print(True)
             return (x, y)
         else:
             return None
@@ -367,17 +370,21 @@ class Graph:
 
         new_region = self.get_current_region(min_intersection, v)
         if new_region == None:
-            min_intersection = (
-                min_intersection[0] + normal[0] * EPSILON[0],
-                min_intersection[1] + normal[1] * EPSILON[1],
-            )
+            # print(min_intersection)
+            # min_intersection = (
+            #    min_intersection[0] + normal[0] * EPSILON[0],
+            #    min_intersection[1] + normal[1] * EPSILON[1],
+            # )
+            # print(min_intersection)
             return min_intersection, theta, normal, 1
         else:
             new_region_weight = self.regions[new_region][-1]
-            min_intersection = (
-                min_intersection[0] - normal[0] * EPSILON[0],
-                min_intersection[1] - normal[1] * EPSILON[1],
-            )
+            # print(min_intersection)
+            # min_intersection = (
+            #    min_intersection[0] - normal[0] * EPSILON[0],
+            #    min_intersection[1] - normal[1] * EPSILON[1],
+            # )
+            # print(min_intersection)
             return min_intersection, theta, normal, new_region_weight
 
 
