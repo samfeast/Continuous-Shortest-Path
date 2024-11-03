@@ -1,3 +1,7 @@
+def get_solution(data, target, method):
+    pass
+
+
 from flask import Flask, request
 from flask_cors import CORS
 
@@ -7,9 +11,14 @@ CORS(app)
 @app.route("/process_data/", methods=["POST"])
 def process_data():
     # Receive the POST request and parse JSON data
-    data = request.get_json()
+    response = request.get_json()
+    data = response.get("data")
+    target = response.get("target")
+    method = response.get("method")
+    # methods are: ray, djikstra, astar, bidirectional
 
-    print(data)
+    solution = get_solution()
+
     return data
 
 

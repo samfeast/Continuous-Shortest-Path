@@ -1,21 +1,18 @@
 <script>
 	let space_ready = false;
-	let current_mode = 'create_space';
 	let highest_region_id = 0;
 	let regions = {};
 	let region_costs = {};
 	let isAssigningCosts = false;
 	let isBinHighlighted = false;
-	let isSendHighlighted = false;
+	let highlighted_method = null;
 
-  
-	const modes = [
-	  { id: 'create_space', label: 'Create Space' },
-	  { id: 'ray', label: 'Ray Pathfinding' },
-	  { id: 'dijkstra', label: 'Dijkstra' },
-	  { id: 'astar', label: 'A*' },
-	  { id: 'bidirectional', label: 'Bidirectional Linear Search' }
-	];
+	const methods = [
+		{"id": "ray", "label": "Ray Pathfinding"},
+		{"id": "djikstra", "label": "Djikstra"},
+		{"id": "astar", "label": "A*"},
+		{"id": "bidirectional", "label": "Bi-directional Search"}
+	]
   
 	// Drawing state
 	let isDrawing = false;
@@ -27,7 +24,8 @@
 	let ctx;
 	let rect;
 	let isValidLine = true;
-	let closedRegions = [];
+	let closed_regions = [];
+	let closed_regions_edges = [];
 	
 	// Start and end points
 	let startEndPoints = {
@@ -35,22 +33,27 @@
 	  end: null
 	};
 
-	function POST_data() {
+	function POST_data(id) {
 		const backendUrl = "http://127.0.0.1:5000";
 
 		// Format data as an array of objects with `id` and `points`
-		const dataToSend = closedRegions.map((region, index) => ({
+
+		console.log(closed_regions_edges);
+
+		const dataToSend = closed_regions_edges.map((region, index) => ({
 			id: index,
-			points: region.points,
+			edges: region.edges,
 			cost: region_costs[index] !== undefined ? region_costs[index] : 1
 		}));
+
+		console.log(dataToSend);
 
 		fetch(backendUrl + "/process_data/", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json"
 			},
-			body: JSON.stringify(dataToSend)
+			body: JSON.stringify({"data": dataToSend, "target": { x: canvas.width - 5, y: canvas.height - 5 }, "method": id})
 		})
 		.then(response => {
 			if (response.ok) {
@@ -59,48 +62,35 @@
 				console.error("Failed to send data to backend");
 			}
 		})
+		.then(returned_data => {
+			console.log(returned_data);
+			
+		})
 		.catch(error => {
 			console.error("Error sending data to backend:", error);
 		});
 	}
 
-	function handleModeSelect(mode) {
-	  if (mode === 'create_space' || space_ready) {
-		current_mode = mode;
-	  }
-	}
-
 	function handleBinClick() {
-		if (current_mode === 'create_space') {
-			isBinHighlighted = true;
-			lines = [];
-			points = [];
-			regions = {};
-			region_costs = {};
-			closedRegions = [];
-			highest_region_id = 0;
-			isAssigningCosts = false;
-			initializeWalls();
-			redraw();
+		isBinHighlighted = true;
+		lines = [];
+		points = [];
+		regions = {};
+		region_costs = {};
+		closed_regions = [];
+		closed_regions_edges = [];
+		highest_region_id = 0;
+		isAssigningCosts = false;
+		initializeWalls();
+		redraw();
 
-			// Remove highlight after 200ms
-			setTimeout(() => {
-				isBinHighlighted = false;
-				redraw();
-			}, 200);
-		}
-	}
-
-	function handleSendClick() {
-		isSendHighlighted = true;
-		POST_data()
 		// Remove highlight after 200ms
 		setTimeout(() => {
 			isBinHighlighted = false;
 			redraw();
 		}, 200);
 	}
-  
+
 	function initCanvas(element) {
 	  canvas = element;
 	  ctx = canvas.getContext('2d');
@@ -232,22 +222,56 @@
 			}
 		}
 
-		// Convert canonical strings back to point arrays and format as regions
 		let region_id = 0;
-		return Array.from(cycles).map(cycleStr => {
+		closed_regions = [];
+		closed_regions_edges = [];
+
+		Array.from(cycles).forEach(cycleStr => {
 			const points = cycleStr.split('|').map(pointStr => {
 				const [x, y] = pointStr.split(',').map(Number);
 				return { x, y };
 			});
 			
-			return {
-				id: region_id++,
+			// Create region for closed_regions
+			closed_regions.push({
+				id: region_id,
 				points: points.map(point => ({
 					x: Math.round(point.x),
 					y: Math.round(point.y)
 				}))
-			};
+			});
+
+			// Create edges for closed_regions_edges
+			const edges = [];
+			for (let i = 0; i < points.length; i++) {
+				const start = points[i];
+				const end = points[(i + 1) % points.length]; // Use modulo to connect last point to first
+				
+				// Find the matching line from the original lines array
+				const matchingLine = lines.find(line => 
+					(line.start.x === start.x && line.start.y === start.y && 
+					line.end.x === end.x && line.end.y === end.y) ||
+					(line.start.x === end.x && line.start.y === end.y && 
+					line.end.x === start.x && line.end.y === start.y)
+				);
+				
+				if (matchingLine) {
+					edges.push(matchingLine);
+				}
+			}
+			
+			closed_regions_edges.push({
+				id: region_id,
+				edges: edges
+			});
+
+			region_id++;
 		});
+		console.log("Outputting closed regions");
+		console.log(closed_regions_edges);
+		console.log(closed_regions);
+
+		return closed_regions;
 	}
 
 	function isPointInRegion(point, region) {
@@ -390,10 +414,8 @@
 	}
 
 	function handleAssignCosts() {
-		if (current_mode === 'create_space') {
-			isAssigningCosts = !isAssigningCosts;  // Toggle the state
-			redraw();
-		}
+		isAssigningCosts = !isAssigningCosts;  // Toggle the state
+		redraw();
 	}
 
 	function handleCanvasClick(event) {
@@ -408,10 +430,10 @@
 		}
 
 		// Handle cost assignment mode
-		if (isAssigningCosts && current_mode === 'create_space') {
+		if (isAssigningCosts) {
 			// Try to find which region was clicked
 			let clickedRegion = null;
-			for (let region of closedRegions) {
+			for (let region of closed_regions) {
 				if (isPointInRegion(pos, region.points)) {
 					clickedRegion = region;
 					break;  // Exit loop once we find the containing region
@@ -425,7 +447,7 @@
 					region_costs[clickedRegion.id] = parseFloat(cost);
 				}
 				redraw();
-				console.log(closedRegions);
+				console.log(closed_regions);
 				return;
 			}
 			
@@ -457,7 +479,7 @@
 					start: startPoint,
 					end: endPoint
 				});
-				closedRegions = findCycles();  // Update regions
+				closed_regions = findCycles();  // Update regions
 			}
 			isDrawing = false;
 			startPoint = null;
@@ -490,7 +512,7 @@
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		
 		// Draw regions
-		for (let region of closedRegions) {
+		for (let region of closed_regions) {
 			if (region.points && region.points.length > 0) {
 				ctx.beginPath();
 				ctx.moveTo(region.points[0].x, region.points[0].y);
@@ -552,6 +574,16 @@
 		ctx.arc(startEndPoints.end.x, startEndPoints.end.y, 6, 0, Math.PI * 2);
 		ctx.fill();
 	}
+
+	function run_method(id) {
+		highlighted_method = id;
+		POST_data(id)
+		// Remove highlight after 200ms
+		setTimeout(() => {
+			highlighted_method = null;
+			redraw();
+		}, 200);
+	}
   </script>
   
   <div class="container">
@@ -560,13 +592,13 @@
 	</header>
   
 	<nav class="sub-banner">
-	  {#each modes as mode}
+	  {#each methods as method}  
 		<button
-		  class:active={current_mode === mode.id}
-		  class:disabled={mode.id !== 'create_space' && !space_ready}
-		  on:click={() => handleModeSelect(mode.id)}
+			class="method-button"
+			class:highlighted={highlighted_method === method.id}
+			on:click={() => run_method(method.id)}
 		>
-		  {mode.label}
+			{method.label}
 		</button>
 	  {/each}
 	</nav>
@@ -581,22 +613,12 @@
 
 		<div class="side-controls">
 			<button 
-				class:disabled={current_mode !== 'create_space'}
-				class:highlighted={isSendHighlighted}
-				on:click={handleSendClick}
-			>
-				Send Data
-			</button>
-
-			<button 
-				class:disabled={current_mode !== 'create_space'}
 				class:highlighted={isBinHighlighted}
 				on:click={handleBinClick}
 			>
 				Bin
 			</button>
 			<button 
-				class:disabled={current_mode !== 'create_space'}
 				class:highlighted={isAssigningCosts}
 				on:click={handleAssignCosts}
 			>
@@ -654,11 +676,20 @@
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-  
+
+	.mode-button {
+        /* Your existing button styles */
+        transition: background-color 0.15s ease;
+    }
+
+    .mode-button.highlighted {
+        background-color: #e2e8f0;  /* Or any color you prefer */
+    }
+
 	button:not(.disabled):hover {
 		background-color: #2980b9;
 	}
-  
+
 	.content {
 		flex: 1;
 		padding: 1rem;
