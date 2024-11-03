@@ -375,8 +375,8 @@ class Graph:
         else:
             new_region_weight = self.regions[new_region][-1]
             min_intersection = (
-                min_intersection[0] + normal[0] * EPSILON[0],
-                min_intersection[1] + normal[1] * EPSILON[1],
+                min_intersection[0] - normal[0] * EPSILON[0],
+                min_intersection[1] - normal[1] * EPSILON[1],
             )
             return min_intersection, theta, normal, new_region_weight
 
@@ -385,9 +385,9 @@ if __name__ == "__main__":
 
     my_regions = [[(1 / 3 + 0.1, -1 / 3), (2 / 3, -1 / 3), (1 / 2, -1 / 2), 3]]
     my_target = (1, -1)
-    graph = Graph(my_regions, my_target)
+    graph = Graph([], my_target)
 
-    intersection, theta, normal, new_weight = graph.get_next((0, 0), (1, -0.4))
+    intersection, theta, normal, new_weight = graph.get_next((0, 0), (0.5, -0.5))
     print(
         f"Intersection: {intersection}\nAngle: {theta}\nNormal: {normal}\nNew Weight: {new_weight}"
     )
