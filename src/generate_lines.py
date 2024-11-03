@@ -367,9 +367,17 @@ class Graph:
 
         new_region = self.get_current_region(min_intersection, v)
         if new_region == None:
+            min_intersection = (
+                min_intersection[0] + normal[0] * EPSILON[0],
+                min_intersection[1] + normal[1] * EPSILON[1],
+            )
             return min_intersection, theta, normal, 1
         else:
             new_region_weight = self.regions[new_region][-1]
+            min_intersection = (
+                min_intersection[0] + normal[0] * EPSILON[0],
+                min_intersection[1] + normal[1] * EPSILON[1],
+            )
             return min_intersection, theta, normal, new_region_weight
 
 
