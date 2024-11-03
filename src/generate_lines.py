@@ -279,9 +279,36 @@ class Graph:
         # Find the current region
         region_index = self.get_current_region(p, v)
         if region_index is None:
-            # The point is in no region
-            # TODO
-            pass
+            min_dist = float("inf")
+            min_vert1 = None
+            min_vert2 = None
+            min_intersection = None
+            for region in self.regions:
+                verts = region[:-1]
+                n = len(verts)
+                for i in range(n):
+
+                    # Find the first time the edge of that region is reached
+
+                    # Remove the weight from the end of the region
+
+                    # The edge to check uses the current and next vertices
+                    vert1 = verts[i % n]
+                    vert2 = verts[(i + 1) % n]
+
+                    # Find the intersection coordinates between the point+vector, and the edge
+                    intersection = self.find_intersection(p, v, vert1, vert2)
+
+                    if intersection is not None:
+                        # If the edges intersect, find the distance
+                        dist = self.dist_between_points(p, intersection)
+                        # If the distance is 0 it must be checking the edge it's on, so ignore it
+                        # If the distance is greater than 0, it has found the edge so break
+                        if dist > 0 and dist < min_dist:
+                            min_dist = dist
+                            min_vert1 = vert1
+                            min_vert2 = vert2
+                            min_intersection = intersection
         else:
             # Find the first time the edge of that region is reached
 
@@ -356,4 +383,3 @@ if __name__ == "__main__":
     print(
         f"Intersection: {intersection}\nAngle: {theta}\nNormal: {normal}\nNew Weight: {new_weight}"
     )
-    print(graph.get_current_region((0, 0), (0.847, -0.532)))
