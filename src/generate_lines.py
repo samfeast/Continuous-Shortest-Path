@@ -10,7 +10,8 @@ class Graph:
         self.regions = regions
         self.target = target
 
-        self.current_region = 0
+        self.current_region = None
+        self.start_region = None
         self.adjacency = {}
 
         self.add_bounding_regions(target)
@@ -105,6 +106,9 @@ class Graph:
 
         return False
 
+    def reset_current_region(self):
+        self.current_region = None
+
     # Get the current region based on a point and vector
     # This is to be used when the ray is at an edge
     def get_current_region(self, point, vector):
@@ -117,6 +121,7 @@ class Graph:
             # Check all the regions, return when the point is in one
             for region in self.regions:
                 if self.is_in_region(point, region):
+                    self.current_region = i
                     return i
                 i += 1
         else:
@@ -347,7 +352,8 @@ if __name__ == "__main__":
     my_target = (1, -1)
     graph = Graph(my_regions, my_target)
 
-    intersection, theta, normal, new_weight = graph.get_next((0, 0), (1, -0.1))
+    intersection, theta, normal, new_weight = graph.get_next((0, 0), (0.847, -0.532))
     print(
         f"Intersection: {intersection}\nAngle: {theta}\nNormal: {normal}\nNew Weight: {new_weight}"
     )
+    print(graph.get_current_region((0, 0), (0.847, -0.532)))
