@@ -6,6 +6,7 @@
 	let region_costs = {};
 	let isAssigningCosts = false;
 	let isBinHighlighted = false;
+	let isSendHighlighted = false;
 
   
 	const modes = [
@@ -33,7 +34,36 @@
 	  start: null,
 	  end: null
 	};
-  
+
+	function POST_data() {
+		const backendUrl = "http://127.0.0.1:5000";
+
+		// Format data as an array of objects with `id` and `points`
+		const dataToSend = closedRegions.map((region, index) => ({
+			id: index,
+			points: region.points,
+			cost: region_costs[index] !== undefined ? region_costs[index] : 1
+		}));
+
+		fetch(backendUrl + "/process_data/", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify(dataToSend)
+		})
+		.then(response => {
+			if (response.ok) {
+				console.log("Data sent to backend successfully");
+			} else {
+				console.error("Failed to send data to backend");
+			}
+		})
+		.catch(error => {
+			console.error("Error sending data to backend:", error);
+		});
+	}
+
 	function handleModeSelect(mode) {
 	  if (mode === 'create_space' || space_ready) {
 		current_mode = mode;
@@ -59,6 +89,16 @@
 				redraw();
 			}, 200);
 		}
+	}
+
+	function handleSendClick() {
+		isSendHighlighted = true;
+		POST_data()
+		// Remove highlight after 200ms
+		setTimeout(() => {
+			isBinHighlighted = false;
+			redraw();
+		}, 200);
 	}
   
 	function initCanvas(element) {
@@ -99,7 +139,7 @@
 		const adjacencyList = new Map();
 
 		// Create adjacency list from lines
-		for (const line of lines) {
+		for (let line of lines) {
 			if (!adjacencyList.has(line.start)) {
 				adjacencyList.set(line.start, new Set());
 			}
@@ -140,7 +180,7 @@
 			path.push(current);
 
 			const neighbors = adjacencyList.get(current) || new Set();
-			for (const neighbor of neighbors) {
+			for (let neighbor of neighbors) {
 				if (neighbor === start && path.length > 2) {
 					const cycle = [...path];
 					const canonicalCycle = getCanonicalCycle(cycle);
@@ -159,7 +199,7 @@
 		}
 
 		// Start only from unvisited nodes to avoid redundant searches
-		for (const point of adjacencyList.keys()) {
+		for (let point of adjacencyList.keys()) {
 			if (!visited.has(point)) {
 				findCyclesFromNode(point, point);
 			}
@@ -182,8 +222,10 @@
 			};
 		});
 	}
-
 	function isPointInRegion(point, region) {
+		// Input validation
+		if (!region || region.length < 3) return false;
+
 		let inside = false;
 		let max_dist = 0;
 		let furthest_edge = null;
@@ -212,7 +254,6 @@
 			}
 		}
 
-		// Helper functions for intersection detection
 		function orientation(p, q, r) {
 			const val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
 			if (val === 0) return 0; // Collinear
@@ -240,15 +281,20 @@
 			if (o3 === 0 && onSegment(C, A, D)) return true;
 			if (o4 === 0 && onSegment(C, B, D)) return true;
 
-			// No intersection
 			return false;
 		}
 
-		// Count intersections with ray from point
+		// Create a ray from the point to a point far along the same line as the furthest edge
+		const ray_end = {
+			x: point.x + (furthest_edge[1].x - furthest_edge[0].x) * 1000,
+			y: point.y + (furthest_edge[1].y - furthest_edge[0].y) * 1000
+		};
+
+		// Count intersections with ray from point to ray_end
 		let count = 0;
 		for (const edge of edges) {
-			if (segmentsIntersect(edge[0], edge[1], furthest_edge[0], furthest_edge[1])) {
-				count += 1;
+			if (segmentsIntersect(point, ray_end, edge[0], edge[1])) {
+				count++;
 			}
 		}
 
@@ -337,12 +383,8 @@
 		if (isAssigningCosts && current_mode === 'create_space') {
 			// Try to find which region was clicked
 			let clickedRegion = null;
-			for (const region of closedRegions) {
+			for (let region of closedRegions.slice(1)) {
 				if (isPointInRegion(pos, region.points)) {
-					console.log("Oh???");
-					console.log(pos);
-					console.log(region.points);
-					console.log(region.id);
 					clickedRegion = region;
 					break;  // Exit loop once we find the containing region
 				}
@@ -350,16 +392,12 @@
 
 			// If we found a region, handle cost assignment
 			if (clickedRegion) {
-				console.log("Is in region", clickedRegion);
 				const cost = prompt(`Enter cost for region ${clickedRegion.id}:`);
 				if (cost !== null && !isNaN(cost)) {
 					region_costs[clickedRegion.id] = parseFloat(cost);
-					console.log("Regions with costs:", closedRegions.map(r => ({
-						id: r.id,
-						cost: region_costs[r.id] || 'unassigned'
-					})));
 				}
 				redraw();
+				console.log(closedRegions);
 				return;
 			}
 			
@@ -423,27 +461,29 @@
 		// Clear canvas
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		
-		// Draw closed regions
-		ctx.fillStyle = 'rgb(255, 255, 255)';
-		for (const region of closedRegions) {
+		// Draw regions
+		for (let region of closedRegions.slice(1)) {
 			if (region.points && region.points.length > 0) {
-			ctx.beginPath();
-			ctx.moveTo(region.points[0].x, region.points[0].y);
-			for (let i = 1; i < region.points.length; i++) {
-				ctx.lineTo(region.points[i].x, region.points[i].y);
-			}
-			ctx.closePath();
-			ctx.fill();
+				ctx.beginPath();
+				ctx.moveTo(region.points[0].x, region.points[0].y);
+				for (let i = 1; i < region.points.length; i++) {
+					ctx.lineTo(region.points[i].x, region.points[i].y);
+				}
+				ctx.closePath();
+				
+				// Set fill color before filling - using a semi-transparent green
+				ctx.fillStyle = 'rgba(46, 204, 113, 0.3)';  // This is a light green color
+				ctx.fill();
 
-			// Optionally draw the region cost if it exists
-			if (region_costs[region.id] !== undefined) {
-				const centerX = region.points.reduce((sum, p) => sum + p.x, 0) / region.points.length;
-				const centerY = region.points.reduce((sum, p) => sum + p.y, 0) / region.points.length;
-				ctx.fillStyle = '#000';
-				ctx.font = '12px Arial';
-				ctx.textAlign = 'center';
-				ctx.fillText(`Cost: ${region_costs[region.id]}`, centerX, centerY);
-			}
+				// Reset fillStyle for the cost text
+				if (region_costs[region.id] !== undefined) {
+					const centerX = region.points.reduce((sum, p) => sum + p.x, 0) / region.points.length;
+					const centerY = region.points.reduce((sum, p) => sum + p.y, 0) / region.points.length;
+					ctx.fillStyle = '#000';
+					ctx.font = '12px Arial';
+					ctx.textAlign = 'center';
+					ctx.fillText(`Cost: ${region_costs[region.id]}`, centerX, centerY);
+				}
 			}
 		}
 		
@@ -483,7 +523,7 @@
 		ctx.beginPath();
 		ctx.arc(startEndPoints.end.x, startEndPoints.end.y, 6, 0, Math.PI * 2);
 		ctx.fill();
-		}
+	}
   </script>
   
   <div class="container">
@@ -512,6 +552,14 @@
 		></canvas>
 
 		<div class="side-controls">
+			<button 
+				class:disabled={current_mode !== 'create_space'}
+				class:highlighted={isSendHighlighted}
+				on:click={handleSendClick}
+			>
+				Send Data
+			</button>
+
 			<button 
 				class:disabled={current_mode !== 'create_space'}
 				class:highlighted={isBinHighlighted}

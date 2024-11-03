@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -9,17 +9,8 @@ def process_data():
     # Receive the POST request and parse JSON data
     data = request.get_json()
 
-    # Extract the edges dictionary
-    edges = data.get("edges")
-    f1 = data.get("current1")
-
-    # calculate the voltages given the edge layout and the source current
-    if edges:
-        voltages = main(edges, f1)
-    else:
-        voltages = []
-
-    return jsonify(list(voltages))
+    print(data)
+    return data
 
 
 @app.route("/process_data", methods=["OPTIONS"])  # Handle CORS preflight requests
