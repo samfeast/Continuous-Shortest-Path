@@ -29,9 +29,10 @@ def findPath(g):
     while True:
         theta,ps,ds=evol(theta,j+1,20,g)
         j += 1
-        display.draw(g,ps)
+#        display.draw(g,ps)
         difs = []
         for i in range(len(ds)-1):
             difs.append(abs(ds[i]-ds[i+1]))
         if max(difs)<=0.00001:
             break
+    return(ps[0])
