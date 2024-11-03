@@ -8,7 +8,6 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-@app.route("/process_data/", methods=["POST"])
 def process_data():
     # Receive the POST request and parse JSON data
     response = request.get_json()
@@ -19,7 +18,7 @@ def process_data():
 
     solution = get_solution()
 
-    return data
+    return solution
 
 
 @app.route("/process_data", methods=["OPTIONS"])  # Handle CORS preflight requests
