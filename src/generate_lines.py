@@ -95,6 +95,9 @@ class Graph:
     def get_target(self):
         return self.target
 
+    def get_adjacency(self):
+        return self.adjacency
+
     def lies_in_interval(self, vert1, vert2, point):
         v1x, v1y = vert1
         v2x, v2y = vert2
@@ -268,7 +271,7 @@ class Graph:
         x, y = np.linalg.solve(coeff_matrix, const_matrix)
 
         # Check that the intersection is on the correct side of the ray
-        if (x - x1) / v[0] >= 0:
+        if self.lies_in_interval(vert1, vert2, (x, y)):
             return (x, y)
         else:
             return None
@@ -372,14 +375,11 @@ class Graph:
 
 if __name__ == "__main__":
 
-    my_regions = [
-        [(0, 0), (0.5, 0), (0.5, -1), (0, -1), 2],
-        [(0.5, 0), (1, 0), (1, -1), (0.5, -1), 3],
-    ]
+    my_regions = [[(1 / 3 + 0.1, -1 / 3), (2 / 3, -1 / 3), (1 / 2, -1 / 2), 3]]
     my_target = (1, -1)
     graph = Graph(my_regions, my_target)
 
-    intersection, theta, normal, new_weight = graph.get_next((0, 0), (0.847, -0.532))
+    intersection, theta, normal, new_weight = graph.get_next((0, 0), (1, -0.4))
     print(
         f"Intersection: {intersection}\nAngle: {theta}\nNormal: {normal}\nNew Weight: {new_weight}"
     )
