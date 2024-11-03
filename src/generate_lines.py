@@ -271,10 +271,8 @@ class Graph:
         x, y = np.linalg.solve(coeff_matrix, const_matrix)
 
         # Check that the intersection is on the correct side of the ray
-        print(vert1, vert2, x, y)
         if (x - x1) / v[0] >= 0:
             # if self.lies_in_interval(vert1, vert2, (round(x, 4), round(y, 4))):
-            print(True)
             return (x, y)
         else:
             return None
