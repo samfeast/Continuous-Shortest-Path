@@ -137,7 +137,7 @@
   
 	function findCycles() {
 		const adjacencyList = new Map();
-
+		
 		// Create adjacency list from lines
 		for (let line of lines) {
 			if (!adjacencyList.has(line.start)) {
@@ -153,6 +153,7 @@
 		const cycles = new Set();
 		const visited = new Set();
 		const inCurrentPath = new Set();
+		const allPoints = new Set(Array.from(adjacencyList.keys()));
 
 		function getCanonicalCycle(cycle) {
 			// Helper function to convert points to comparable string
@@ -184,7 +185,33 @@
 				if (neighbor === start && path.length > 2) {
 					const cycle = [...path];
 					const canonicalCycle = getCanonicalCycle(cycle);
-					cycles.add(canonicalCycle);
+					
+					// Convert cycle to region format for checking
+					const region = {
+						points: cycle.map(point => ({
+							x: Math.round(point.x),
+							y: Math.round(point.y)
+						}))
+					};
+
+					// Check if any point from the graph is inside this potential region
+					let isValidRegion = true;
+					for (let point of allPoints) {
+						// Skip points that are part of the region boundary
+						if (cycle.some(cyclePoint => 
+							cyclePoint.x === point.x && cyclePoint.y === point.y)) {
+							continue;
+						}
+						
+						if (isPointInRegion(point, region.points)) {
+							isValidRegion = false;
+							break;
+						}
+					}
+
+					if (isValidRegion) {
+						cycles.add(canonicalCycle);
+					}
 				} else if (!inCurrentPath.has(neighbor) && !visited.has(neighbor)) {
 					findCyclesFromNode(start, neighbor, path, depth + 1);
 				}
@@ -222,6 +249,7 @@
 			};
 		});
 	}
+
 	function isPointInRegion(point, region) {
 		// Input validation
 		if (!region || region.length < 3) return false;
@@ -383,7 +411,7 @@
 		if (isAssigningCosts && current_mode === 'create_space') {
 			// Try to find which region was clicked
 			let clickedRegion = null;
-			for (let region of closedRegions.slice(1)) {
+			for (let region of closedRegions) {
 				if (isPointInRegion(pos, region.points)) {
 					clickedRegion = region;
 					break;  // Exit loop once we find the containing region
@@ -462,7 +490,7 @@
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		
 		// Draw regions
-		for (let region of closedRegions.slice(1)) {
+		for (let region of closedRegions) {
 			if (region.points && region.points.length > 0) {
 				ctx.beginPath();
 				ctx.moveTo(region.points[0].x, region.points[0].y);

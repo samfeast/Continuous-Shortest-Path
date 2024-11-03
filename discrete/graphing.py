@@ -11,31 +11,21 @@ class Dijkstra:
     in a graph where nodes are constrained to regions with different travel costs.
     """
     
-    def __init__(self, graph_adjacency: np.ndarray, nodes: Dict[int, Tuple[List[Tuple[float, float]], float]]):
+    def __init__(self, graph_adjacency: Dict[int, Set[int]], nodes: Dict[int, Tuple[List[Tuple[float, float]], float]]):
         """
         Initialize the Dijkstra algorithm with graph structure and node information.
         
         Args:
-            graph_adjacency: nxn matrix where entry (i,j) is 1 if regions i and j are adjacent
+            graph_adjacency: Dictionary mapping region ID to set of adjacent region IDs
             nodes: Dictionary mapping region ID to tuple of (points, cost)
                   where points is list of (x,y) coordinates and cost is float
         """
         self.graph_adjacency = graph_adjacency
         self.nodes = nodes
         self.region_points = self._build_region_points()
-                # New: Pre-compute adjacent regions
-        self.adjacent_regions = self._precompute_adjacent_regions()
-        # New: Distance cache
+        # Distance cache
         self.distance_cache = {}
 
-    def _precompute_adjacent_regions(self) -> Dict[int, Set[int]]:
-        """Pre-compute adjacent regions for faster lookup"""
-        adjacent = {}
-        for i in range(len(self.graph_adjacency)):
-            adjacent[i] = set(j for j in range(len(self.graph_adjacency)) 
-                            if self.graph_adjacency[i][j] == 1)
-        return adjacent
-        
     def _build_region_points(self) -> Dict[Tuple[float, float], int]:
         """
         Build mapping from points to their corresponding regions.
@@ -87,7 +77,7 @@ class Dijkstra:
         if region1 == region2:
             # Within same region
             return distance * self.nodes[region1][1]
-        elif self.graph_adjacency[region1][region2] == 1:
+        elif region2 in self.graph_adjacency[region1]:  # Check adjacency using dictionary
             # Adjacent regions
             avg_cost = (self.nodes[region1][1] + self.nodes[region2][1]) / 2
             return distance * avg_cost
@@ -95,15 +85,15 @@ class Dijkstra:
             return float('inf')
     
     def _get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
-        """Optimized neighbor lookup using pre-computed adjacent regions"""
+        """Get neighboring points from current and adjacent regions"""
         current_region = self._get_point_region(point)
         neighbors = []
         
         # Add points from same region
         neighbors.extend(p for p in self.nodes[current_region][0] if p != point)
         
-        # Add points from pre-computed adjacent regions
-        for region_id in self.adjacent_regions[current_region]:
+        # Add points from adjacent regions
+        for region_id in self.graph_adjacency[current_region]:
             neighbors.extend(self.nodes[region_id][0])
                 
         return neighbors
@@ -143,10 +133,12 @@ class Dijkstra:
                 max_possible_optimal = current_distance
                 continue
                 
+            if current_point in visited:
+                continue
+                
+            visited.add(current_point)
+                
             for neighbor in self._get_neighbors(current_point):
-                if neighbor in visited:
-                    continue
-                    
                 travel_cost = self._calculate_travel_cost(current_point, neighbor)
                 distance = current_distance + travel_cost
                 
