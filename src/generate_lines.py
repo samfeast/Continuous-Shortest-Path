@@ -1,7 +1,6 @@
 import numpy as np
 import math
 
-# regions = [[(0, 0), (1, 0), (0, 1), 4], [(1, 0), (0, 1), (1, 1), 3]]
 EPSILON = (0.00001, 0.00001)
 
 
@@ -11,7 +10,11 @@ class Graph:
         self.regions = regions
         self.target = target
 
+        self.current_region = 0
+        self.adjacency = {}
+
         self.add_bounding_regions(target)
+        self.compute_region_adjacency(regions)
 
     def add_bounding_regions(self, target):
         x, y = target
@@ -26,11 +29,81 @@ class Graph:
         self.regions.append(bbox_3)
         self.regions.append(bbox_4)
 
+    def compute_region_adjacency(self, regions):
+        all_region_edges = []
+        i = 0
+        for region in regions:
+            self.adjacency[i] = []
+            region = region[:-1]
+            n = len(region)
+            region_edges = []
+            for j in range(n):
+                region_edges.append((region[j], region[(j + 1) % n]))
+            all_region_edges.append(region_edges)
+            i += 1
+
+        n = len(regions)
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+
+                for edge_i in all_region_edges[i]:
+                    v1i, v2i = edge_i
+                    for edge_j in all_region_edges[j]:
+                        if j in self.adjacency[i]:
+                            continue
+
+                        v1j, v2j = edge_j
+
+                        if v2i[0] == v1i[0]:
+                            edge_i_gradient = float("inf")
+                        else:
+                            edge_i_gradient = (v2i[1] - v1i[1]) / (v2i[0] - v1i[0])
+
+                        if v2j[0] == v1j[0]:
+                            edge_j_gradient = float("inf")
+                        else:
+                            edge_j_gradient = (v2j[1] - v1j[1]) / (v2j[0] - v1j[0])
+
+                        # Check if the two lines have the same gradient (accounting for inaccuracy)
+                        if (
+                            edge_i_gradient <= edge_j_gradient + EPSILON[0]
+                            and edge_i_gradient >= edge_j_gradient - EPSILON[0]
+                        ):
+                            if self.lies_in_interval(v1i, v2i, v1j) or self.lies_in_interval(
+                                v1i, v2i, v2j
+                            ):
+                                # If one of the vertices of j lies strictly inside i
+                                self.adjacency[i].append(j)
+                                continue
+                            elif self.lies_in_interval(v1j, v2j, v1i) or self.lies_in_interval(
+                                v1j, v2j, v2i
+                            ):
+                                # If one of the vertices of i lies strictly inside j
+                                self.adjacency[i].append(j)
+                                continue
+                            elif set(edge_i) == set(edge_j):
+                                # If i and j are the same edge
+                                self.adjacency[i].append(j)
+                                continue
+
     def get_regions(self):
         return self.regions
 
     def get_target(self):
         return self.target
+
+    def lies_in_interval(self, vert1, vert2, point):
+        v1x, v1y = vert1
+        v2x, v2y = vert2
+        x, y = point
+
+        if min(v1x, v2x) <= x and x <= max(v1x, v2x):
+            if min(v1y, v2y) <= y and y <= max(v1y, v2y):
+                return True
+
+        return False
 
     # Get the current region based on a point and vector
     # This is to be used when the ray is at an edge
@@ -38,12 +111,28 @@ class Graph:
 
         # Nudge the position slightly in the direction it's pointing
         point = (point[0] + vector[0] * EPSILON[0], point[1] + vector[1] * EPSILON[1])
-        i = 0
-        # Check all the regions, return when the point is in one
-        for region in self.regions:
-            if self.is_in_region(point, region):
-                return i
-            i += 1
+        # If there is no current region stored check all regions
+        if self.current_region is None:
+            i = 0
+            # Check all the regions, return when the point is in one
+            for region in self.regions:
+                if self.is_in_region(point, region):
+                    return i
+                i += 1
+        else:
+
+            # Check if its not moved to a new region
+            if self.is_in_region(point, self.regions[self.current_region]):
+                return self.current_region
+
+            n = len(self.regions)
+            # If it's moved to a new region, then go through all regions
+            for i in range(n):
+                # If region i is adjacent to the current region, check if we're now in that region
+                if i in self.adjacency[self.current_region]:
+                    if self.is_in_region(point, self.regions[i]):
+                        self.current_region = i
+                        return i
 
         return None
 
@@ -63,6 +152,31 @@ class Graph:
             # Check if the point is exactly on this edge
             if self.is_point_on_segment(x, y, p1x, p1y, p2x, p2y):
                 return True
+
+            # Check if it is inside the boundary
+            if y > min(p1y, p2y):
+                if y <= max(p1y, p2y):
+                    if x <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= xinters:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
+
+        return inside
+
+    def is_strictly_in_region(self, point, region):
+        # point (x, y)
+        # vertices [(x1, y1), (x2, y2),..., (xn, yn), weight]
+        vertices = region[:-1]
+
+        x, y = point
+        n = len(vertices)
+        inside = False
+
+        p1x, p1y = vertices[0]
+        for i in range(n + 1):
+            p2x, p2y = vertices[i % n]
 
             # Check if it is inside the boundary
             if y > min(p1y, p2y):
